@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NovaSeek 後台管理</title>
+  <style>
+    body {
+      background: #0a0a1a;
+      color: #eee;
+      font-family: 'Roboto', sans-serif;
+      margin: 0; padding: 24px;
+      max-width: 960px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 700;
+      color: #a178ff;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    button {
+      background: linear-gradient(135deg, #7050ff, #512ecc);
+      border: none;
+      padding: 10px 16px;
+      border-radius: 12px;
+      color: white;
+      font-weight: 700;
+      cursor: pointer;
+      margin: 8px 0;
+      user-select: none;
+      transition: background 0.3s ease;
+    }
+    button:hover {
+      background: linear-gradient(135deg, #512ecc, #7050ff);
+    }
+    input, textarea {
+      width: 100%;
+      padding: 10px;
+      margin: 6px 0 12px 0;
+      border-radius: 10px;
+      border: none;
+      outline: none;
+      font-size: 1rem;
+      background: #1c1c40;
+      color: #eee;
+      box-shadow: inset 0 0 6px #7050ff66;
+      resize: vertical;
+    }
+    label {
+      font-weight: 600;
+      display: block;
+      margin-top: 12px;
+      user-select: none;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 24px;
+    }
+    th, td {
+      padding: 12px;
+      border-bottom: 1px solid #333366;
+      text-align: left;
+      vertical-align: middle;
+      user-select: text;
+    }
+    th {
+      background: #2c2c5a;
+    }
+    tr:hover {
+      background: #3c3c8a;
+    }
+    .action-btn {
+      background: transparent;
+      border: none;
+      color: #a178ff;
+      cursor: pointer;
+      font-weight: 700;
+      margin-right: 8px;
+      user-select: none;
+    }
+    .action-btn:hover {
+      color: #70c3ff;
+    }
+    .form-section {
+      background: #121232cc;
+      padding: 20px;
+      border-radius: 18px;
+      margin-bottom: 40px;
+      box-shadow: 0 0 24px #7050ffbb;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>NovaSeek 後台管理</h1>
+
+  <section class="form-section">
+    <h2 id="formTitle">新增項目</h2>
+    <label for="titleInput">標題</label>
+    <input type="text" id="titleInput" placeholder="請輸入標題" />
+
+    <label for="descInput">描述</label>
+    <textarea id="descInput" rows="3" placeholder="請輸入描述"></textarea>
+
+    <label for="catInput">分類</label>
+    <input type="text" id="catInput" placeholder="請輸入分類" />
+
+    <label for="imgInput">圖片 URL</label>
+    <input type="text" id="imgInput" placeholder="請輸入圖片網址 (可留空)" />
+
+    <button id="saveBtn">新增項目</button>
+    <button id="cancelEditBtn" style="display:none; background:#a178ff;">取消編輯</button>
+  </section>
+
+  <table aria-label="資料列表">
+    <thead>
+      <tr>
+        <th>標題</th>
+        <th>描述</th>
+        <th>分類</th>
+        <th>圖片</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody id="itemsTableBody">
+      <!-- 內容由JS動態產生 -->
+    </tbody>
+  </table>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.3.0/firebase-app.js";
+    import {
+      getFirestore,
+      collection,
+      getDocs,
+      addDoc,
+      deleteDoc,
+      doc,
+      updateDoc,
+      getDoc
+    } from "https://www.gstatic.com/firebasejs/10.3.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyA7K4x1Di_xUaVt7MF08LfumJxc10dqa3c",
+      authDomain: "sample-firebase-ai-app-df21b.firebaseapp.com",
+      projectId: "sample-firebase-ai-app-df21b",
+      storageBucket: "sample-firebase-ai-app-df21b.firebasestorage.app",
+      messagingSenderId: "762970139210",
+      appId: "1:762970139210:web:149e9ab5e9593a484cd4b3"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const titleInput = document.getElementById('titleInput');
+    const descInput = document.getElementById('descInput');
+    const catInput = document.getElementById('catInput');
+    const imgInput = document.getElementById('imgInput');
+    const saveBtn = document.getElementById('saveBtn');
+    const cancelEditBtn = document.getElementById('cancelEditBtn');
+    const itemsTableBody = document.getElementById('itemsTableBody');
+    const formTitle = document.getElementById('formTitle');
+
+    let editingId = null; // 目前編輯的 doc id，null 表示新增模式
+
+    async function loadItems() {
+      itemsTableBody.innerHTML = '';
+      const querySnapshot = await getDocs(collection(db, "items"));
+      querySnapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        const tr = document.createElement('tr');
+
+        tr.innerHTML = `
+          <td>${escapeHtml(data.title)}</td>
+          <td>${escapeHtml(data.description)}</td>
+          <td>${escapeHtml(data.category)}</td>
+          <td><img src="${escapeHtml(data.image || '')}" alt="圖片" style="height:60px; object-fit:cover; border-radius:6px;" onerror="this.src='https://via.placeholder.com/100x60?text=No+Image';" /></td>
+          <td>
+            <button class="action-btn" data-id="${docSnap.id}" data-action="edit">編輯</button>
+            <button class="action-btn" data-id="${docSnap.id}" data-action="delete">刪除</button>
+          </td>
+        `;
+        itemsTableBody.appendChild(tr);
+      });
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      return text.replace(/[&<>"']/g, (m) => ( {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      } )[m]);
+    }
+
+    async function addItem() {
+      const title = titleInput.value.trim();
+      const description = descInput.value.trim();
+      const category = catInput.value.trim();
+      const image = imgInput.value.trim();
+
+      if (!title) {
+        alert("標題不可為空");
+        return;
+      }
+
+      await addDoc(collection(db, "items"), {
+        title,
+        description,
+        category,
+        image
+      });
+
+      clearForm();
+      loadItems();
+    }
+
+    async function updateItem() {
+      const title = titleInput.value.trim();
+      const description = descInput.value.trim();
+      const category = catInput.value.trim();
+      const image = imgInput.value.trim();
+
+      if (!title) {
+        alert("標題不可為空");
+        return;
+      }
+      const docRef = doc(db, "items", editingId);
+      await updateDoc(docRef, {
+        title,
+        description,
+        category,
+        image
+      });
+
+      clearForm();
+      loadItems();
+      editingId = null;
+      saveBtn.textContent = "新增項目";
+      formTitle.textContent = "新增項目";
+      cancelEditBtn.style.display = "none";
+    }
+
+    function clearForm() {
+      titleInput.value = '';
+      descInput.value = '';
+      catInput.value = '';
+      imgInput.value = '';
+    }
+
+    saveBtn.addEventListener('click', () => {
+      if (editingId) {
+        updateItem();
+      } else {
+        addItem();
+      }
+    });
+
+    cancelEditBtn.addEventListener('click', () => {
+      editingId = null;
+      clearForm();
+      saveBtn.textContent = "新增項目";
+      formTitle.textContent = "新增項目";
+      cancelEditBtn.style.display = "none";
+    });
+
+    itemsTableBody.addEventListener('click', async (e) => {
+      if (e.target.tagName !== 'BUTTON') return;
+
+      const id = e.target.dataset.id;
+      const action = e.target.dataset.action;
+
+      if (action === 'edit') {
+        const docRef = doc(db, "items", id);
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) {
+          alert("資料不存在");
+          return;
+        }
+        const data = docSnap.data();
+
+        titleInput.value = data.title || '';
+        descInput.value = data.description || '';
+        catInput.value = data.category || '';
+        imgInput.value = data.image || '';
+
+        editingId = id;
+        saveBtn.textContent = "更新項目";
+        formTitle.textContent = "編輯項目";
+        cancelEditBtn.style.display = "inline-block";
+      }
+      else if (action === 'delete') {
+        if (confirm("確定要刪除這筆資料嗎？")) {
+          await deleteDoc(doc(db, "items", id));
+          loadItems();
+        }
+      }
+    });
+
+    loadItems();
+  </script>
+
+</body>
+</html>
